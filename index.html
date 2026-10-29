@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aptos 0DTE Quant Trading Terminal</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Official Aptos SDK v1 via CDN -->
+  <script src="https://unpkg.com/aptos@1.21.0/dist/index.global.js"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #030308;
+      color: #f3f4f6;
+      /* Dynamic multi-colored rainbow glow in background */
+      background-image: 
+        radial-gradient(at 15% 15%, rgba(139, 92, 246, 0.22) 0px, transparent 40%),
+        radial-gradient(at 85% 20%, rgba(236, 72, 153, 0.18) 0px, transparent 40%),
+        radial-gradient(at 50% 80%, rgba(16, 185, 129, 0.18) 0px, transparent 45%),
+        radial-gradient(at 80% 85%, rgba(245, 158, 11, 0.15) 0px, transparent 40%);
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Glowing Violet Card Styling */
+    .trade-card {
+      background: rgba(13, 10, 25, 0.88);
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      border-radius: 1.25rem;
+      box-shadow: 0 0 20px -3px rgba(139, 92, 246, 0.25), inset 0 0 15px -5px rgba(168, 85, 247, 0.15);
+      backdrop-filter: blur(12px);
+      transition: all 0.3s ease;
+    }
+
+    .trade-card:hover {
+      border-color: rgba(168, 85, 247, 0.65);
+      box-shadow: 0 0 30px 2px rgba(168, 85, 247, 0.4), inset 0 0 20px -2px rgba(236, 72, 153, 0.2);
+    }
+
+    /* Glow utilities for active trading signals */
+    .glow-emerald { box-shadow: 0 0 25px 2px rgba(16, 185, 129, 0.6); }
+    .glow-rose { box-shadow: 0 0 25px 2px rgba(244, 63, 94, 0.6); }
+    .glow-violet { box-shadow: 0 0 25px 2px rgba(168, 85, 247, 0.6); }
+    
+    /* Custom Rainbow Multi-color Range Slider */
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type=range]:focus { outline: none; }
+    input[type=range]::-webkit-slider-runnable-track {
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #ec4899, #a855f7, #6366f1, #10b981, #f59e0b);
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 24px;
+      width: 24px;
+      border-radius: 50%;
+      background: #c084fc;
+      border: 2px solid #ffffff;
+      margin-top: -8px;
+      cursor: pointer;
+      box-shadow: 0 0 18px rgba(192, 132, 252, 1);
+      transition: transform 0.15s ease;
+    }
+    input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+    input[type=range]::-moz-range-track {
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #ec4899, #a855f7, #6366f1, #10b981, #f59e0b);
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+    }
+    input[type=range]::-moz-range-thumb {
+      height: 24px;
+      width: 24px;
+      border-radius: 50%;
+      background: #c084fc;
+      border: 2px solid #ffffff;
+      cursor: pointer;
+      box-shadow: 0 0 18px rgba(192, 132, 252, 1);
+      transition: transform 0.15s ease;
+    }
+    input[type=range]::-moz-range-thumb:hover { transform: scale(1.25); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-purple-500 selection:text-white">
+
+  <!-- Toast Notification Banner -->
+  <div id="toast" class="fixed top-5 right-5 z-50 hidden transform transition-all duration-300 max-w-md rounded-xl p-4 bg-slate-950/95 border border-purple-500/50 border-l-4 border-l-purple-400 shadow-2xl shadow-purple-950/50 backdrop-blur-md">
+    <div class="flex items-start gap-3">
+      <i data-lucide="info" class="w-5 h-5 text-purple-400 shrink-0 mt-0.5"></i>
+      <div class="flex-1 text-xs leading-relaxed text-slate-200" id="toastMsg">Notification</div>
+      <button onclick="hideToast()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+  </div>
+
+  <!-- Top Navbar -->
+  <header class="border-b border-purple-900/40 bg-black/80 backdrop-blur-xl sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 via-pink-500 to-amber-400 flex items-center justify-center shadow-lg shadow-purple-500/30">
+          <i data-lucide="candlestick-chart" class="w-5 h-5 text-black stroke-[2.5]"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-extrabold text-lg tracking-tight text-white">APTOS <span class="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-amber-300">0DTE</span></h1>
+            <span class="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">Track 2 MVP</span>
+          </div>
+          <p class="text-xs text-slate-400 font-medium">Decentralized 24-Hour Zero-Day Quant Futures Terminal</p>
+        </div>
+      </div>
+
+      <!-- Live Ticker Header -->
+      <div class="flex items-center gap-3 sm:gap-6 flex-wrap">
+        <div class="hidden md:flex items-center gap-5 bg-black/60 border border-purple-900/50 px-4 py-1.5 rounded-xl">
+          <div>
+            <span class="text-[10px] text-slate-400 uppercase block font-semibold">Simulated Index</span>
+            <span id="navLivePrice" class="mono font-bold text-sm text-emerald-400">$52,000.00</span>
+          </div>
+          <div class="h-6 w-px bg-purple-900/50"></div>
+          <div>
+            <span class="text-[10px] text-slate-400 uppercase block font-semibold">Settlement Window</span>
+            <span id="navCountdown" class="mono font-semibold text-xs text-purple-300">24:00:00</span>
+          </div>
+        </div>
+
+        <!-- Connection Button -->
+        <button onclick="toggleConfigModal()" id="walletBtn" class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-950/40 hover:bg-purple-900/50 border border-purple-500/40 text-xs font-bold transition-all text-slate-200 shadow-md">
+          <span id="connDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="walletBtnText" class="mono">Configure Key</span>
+          <i data-lucide="settings" class="w-3.5 h-3.5 text-purple-300"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+
+    <!-- LEFT COLUMN: Credentials & Order Ticket (5 cols) -->
+    <div class="lg:col-span-5 flex flex-col gap-6">
+
+      <!-- Credentials Card -->
+      <div id="configCard" class="trade-card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="key-round" class="w-4 h-4 text-purple-400"></i>
+            <h2 class="text-sm font-bold text-white">1. Aptos Testnet Credentials</h2>
+          </div>
+          <span class="text-[11px] text-purple-300 mono font-semibold">Aptos SDK Direct</span>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1 font-medium">Deployed Move Contract Address (`futures_addr`)</label>
+            <input type="text" id="contractAddr" value="0x3ea9302851e350e63a3de071f1d02c38989162da469e0ff851d398de47e92b4e"
+              class="w-full px-3 py-2 rounded-xl bg-black/90 border border-purple-900/60 text-xs mono text-slate-200 focus:outline-none focus:border-purple-400" />
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1 font-medium font-mono">Testnet Private Key (from .aptos/config.yaml)</label>
+            <div class="flex gap-2">
+              <input type="password" id="privateKey" placeholder="ed25519-priv-0x... or 0x..."
+                class="flex-1 px-3 py-2 rounded-xl bg-black/90 border border-purple-900/60 text-xs mono text-slate-200 focus:outline-none focus:border-purple-400" />
+              <button onclick="connectAccount()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 via-pink-500 to-amber-400 hover:opacity-90 text-black font-extrabold text-xs transition shrink-0 flex items-center gap-1.5 shadow-lg shadow-purple-500/20">
+                <i data-lucide="plug-zap" class="w-3.5 h-3.5"></i> Connect
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t border-purple-900/40 text-xs">
+            <span class="text-slate-400">Active Signer:</span>
+            <span id="accountDisplay" class="mono text-amber-400 font-bold">Not loaded</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Ticket Card -->
+      <div class="trade-card p-5 flex-1 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between border-b border-purple-900/40 pb-3 mb-4">
+            <div class="flex items-center gap-2">
+              <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
+              <h2 class="text-sm font-bold text-white">2. Place 24-Hour Quant Order</h2>
+            </div>
+            <span class="text-[11px] mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">quant_futures::V2</span>
+          </div>
+
+          <!-- Direction Toggle -->
+          <div class="grid grid-cols-2 gap-2 p-1 bg-black/90 rounded-xl border border-purple-900/50 mb-4">
+            <button id="btnLong" onclick="setDirection(true)" class="py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-white">
+              <i data-lucide="trending-up" class="w-4 h-4"></i> LONG (Price Up)
+            </button>
+            <button id="btnShort" onclick="setDirection(false)" class="py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all bg-rose-500 text-white glow-rose">
+              <i data-lucide="trending-down" class="w-4 h-4"></i> SHORT (Price Down)
+            </button>
+          </div>
+
+          <!-- Collateral Input -->
+          <div class="mb-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="text-slate-400 font-medium">Margin Collateral Balance</span>
+              <div class="flex gap-1.5">
+                <button onclick="setQuickAmount(100)" class="px-2 py-0.5 rounded bg-purple-950/40 hover:bg-purple-900/50 text-[10px] mono text-purple-200 border border-purple-800/40 font-semibold">100</button>
+                <button onclick="setQuickAmount(300)" class="px-2 py-0.5 rounded bg-purple-950/40 hover:bg-purple-900/50 text-[10px] mono text-purple-200 border border-purple-800/40 font-semibold">300</button>
+                <button onclick="setQuickAmount(500)" class="px-2 py-0.5 rounded bg-purple-950/40 hover:bg-purple-900/50 text-[10px] mono text-purple-200 border border-purple-800/40 font-semibold">500</button>
+                <button onclick="setQuickAmount(1000)" class="px-2 py-0.5 rounded bg-purple-950/40 hover:bg-purple-900/50 text-[10px] mono text-purple-200 border border-purple-800/40 font-semibold">1000</button>
+              </div>
+            </div>
+            <div class="relative">
+              <input type="number" id="lockedAmount" value="300" oninput="updateLiveMath()"
+                class="w-full pl-3 pr-16 py-2.5 rounded-xl bg-black/90 border border-purple-900/60 mono text-sm font-extrabold text-white focus:outline-none focus:border-purple-400" />
+              <span class="absolute right-3 top-2.5 text-xs mono text-purple-300 font-bold">UNITS</span>
+            </div>
+          </div>
+
+          <!-- Entry Price -->
+          <div class="mb-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="text-slate-400 font-medium">Contract Entry Price ($ USD)</span>
+              <button onclick="syncEntryWithLive()" class="text-purple-400 hover:underline text-[11px] flex items-center gap-1 font-bold">
+                <i data-lucide="refresh-cw" class="w-3 h-3"></i> Sync Live Price
+              </button>
+            </div>
+            <div class="relative">
+              <input type="number" id="entryPrice" value="52000" oninput="updateLiveMath()"
+                class="w-full pl-3 pr-14 py-2.5 rounded-xl bg-black/90 border border-purple-900/60 mono text-sm font-extrabold text-white focus:outline-none focus:border-purple-400" />
+              <span class="absolute right-3 top-2.5 text-xs mono text-purple-300 font-bold">USD</span>
+            </div>
+          </div>
+
+          <!-- Leverage Slider -->
+          <div class="mb-5 p-3.5 rounded-xl bg-black/60 border border-purple-900/40">
+            <div class="flex justify-between items-center text-xs mb-2">
+              <span class="text-slate-400 flex items-center gap-1.5 font-semibold">
+                <i data-lucide="gauge" class="w-3.5 h-3.5 text-purple-400"></i> Leverage Multiplier
+              </span>
+              <span id="leverageLabel" class="mono font-black text-purple-300 text-sm">5x</span>
+            </div>
+            <input type="range" id="leverage" min="1" max="10" value="5" oninput="updateLiveMath()" class="w-full" />
+            <div class="flex justify-between text-[10px] mono text-slate-500 mt-1 font-semibold">
+              <span>1x (Base)</span>
+              <span>5x (Quant)</span>
+              <span>10x (Max Risk)</span>
+            </div>
+          </div>
+
+          <!-- Pre-Trade Risk Box -->
+          <div class="p-3.5 rounded-xl bg-black/80 border border-purple-900/40 space-y-2 text-xs mb-5">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Notional Position Size</span>
+              <span id="calcNotional" class="mono font-bold text-white">1,500 UNITS</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Est. Liquidation Price</span>
+              <span id="calcLiq" class="mono font-bold text-amber-400">$62,400.00</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Expiration Window</span>
+              <span class="mono text-slate-300 font-semibold">24 Hours (86,400s)</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="submitOrderBtn" onclick="openPosition()" class="w-full py-3.5 rounded-xl font-extrabold text-sm bg-rose-500 hover:bg-rose-600 text-white shadow-lg transition-all flex items-center justify-center gap-2 glow-rose">
+          <i data-lucide="lock" class="w-4 h-4"></i>
+          <span id="submitOrderText">Lock 300 Units & Open SHORT</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: Chart, Settlement & Telemetry (7 cols) -->
+    <div class="lg:col-span-7 flex flex-col gap-6">
+
+      <!-- Interactive Chart & Settlement Card -->
+      <div class="trade-card p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-pink-500 animate-ping"></span>
+              <h2 class="text-sm font-bold text-white">3. Interactive 24h Market Simulator & Settlement</h2>
+            </div>
+            <p class="text-xs text-slate-400">Simulate price movements and test dynamic P&L settlement logic</p>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] uppercase text-slate-400 block font-semibold">Simulated Final Price</span>
+            <span id="simPriceBig" class="mono text-xl font-black text-purple-300">$40,000</span>
+          </div>
+        </div>
+
+        <!-- Canvas Chart -->
+        <div class="relative w-full h-48 rounded-xl bg-black border border-purple-900/50 overflow-hidden mb-4">
+          <canvas id="priceCanvas" class="w-full h-full block"></canvas>
+          <div class="absolute top-2.5 left-3 flex flex-wrap gap-2 text-[11px] mono">
+            <span class="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-800/60 text-slate-200 font-semibold backdrop-blur-md">
+              Entry: <strong id="overlayEntry" class="text-white">$52,000</strong>
+            </span>
+            <span class="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-800/60 text-slate-200 font-semibold backdrop-blur-md">
+              Delta: <strong id="overlayDelta" class="text-emerald-400">-23.08%</strong>
+            </span>
+            <span class="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-800/60 text-slate-200 font-semibold backdrop-blur-md">
+              Projected Payout: <strong id="overlayPayout" class="text-emerald-400">0 UNITS</strong>
+            </span>
+          </div>
+        </div>
+
+        <!-- Shocks & Settlement Bar -->
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+          <div class="sm:col-span-7 flex flex-wrap gap-1.5">
+            <button onclick="applyPriceShock(-0.15)" class="px-2.5 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs mono font-bold transition">-15% Crash</button>
+            <button onclick="applyPriceShock(-0.05)" class="px-2.5 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs mono font-bold transition">-5% Dip</button>
+            <button onclick="applyPriceShock(0.05)" class="px-2.5 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs mono font-bold transition">+5% Pump</button>
+            <button onclick="applyPriceShock(0.15)" class="px-2.5 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs mono font-bold transition">+15% Rally</button>
+          </div>
+          <div class="sm:col-span-5 flex gap-2">
+            <input type="number" id="simulatedPrice" value="40000" oninput="updateLiveMath()"
+              class="w-full px-3 py-2 rounded-xl bg-black border border-purple-900/60 mono text-sm font-extrabold text-white focus:outline-none focus:border-purple-400" />
+            <button onclick="settlePosition()" id="settleBtn" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs shrink-0 transition flex items-center gap-1.5 shadow-lg glow-emerald">
+              <i data-lucide="check-circle-2" class="w-4 h-4"></i> Settle
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Telemetry Card -->
+      <div class="trade-card p-5 flex-1 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between border-b border-purple-900/40 pb-3 mb-4">
+            <div class="flex items-center gap-2">
+              <i data-lucide="cpu" class="w-4 h-4 text-purple-400"></i>
+              <h2 class="text-sm font-bold text-white">4. On-Chain Resource Telemetry (`Position`)</h2>
+            </div>
+            <button onclick="fetchPosition()" class="px-3 py-1 rounded-lg bg-purple-950/40 hover:bg-purple-900/50 border border-purple-800/40 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition">
+              <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Sync Blockchain
+            </button>
+          </div>
+
+          <!-- Telemetry Grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <div class="p-3.5 rounded-xl bg-black/80 border border-purple-900/40">
+              <span class="text-[11px] text-slate-400 block font-medium">Margin Collateral</span>
+              <strong id="stLocked" class="mono text-base text-white mt-0.5 block font-bold">-</strong>
+            </div>
+            <div class="p-3.5 rounded-xl bg-black/80 border border-purple-900/40">
+              <span class="text-[11px] text-slate-400 block font-medium">Entry Price</span>
+              <strong id="stEntry" class="mono text-base text-white mt-0.5 block font-bold">-</strong>
+            </div>
+            <div class="p-3.5 rounded-xl bg-black/80 border border-purple-900/40">
+              <span class="text-[11px] text-slate-400 block font-medium">Direction / Leverage</span>
+              <strong id="stDirection" class="mono text-base text-white mt-0.5 block font-bold">-</strong>
+            </div>
+            <div class="p-3.5 rounded-xl bg-black/80 border border-purple-900/40">
+              <span class="text-[11px] text-slate-400 block font-medium">24h Expiry Time</span>
+              <strong id="stExpiry" class="mono text-xs text-slate-300 mt-1 block font-bold">-</strong>
+            </div>
+            <div class="p-3.5 rounded-xl bg-black/80 border border-purple-900/40">
+              <span class="text-[11px] text-slate-400 block font-medium">Contract Status</span>
+              <strong id="stSettled" class="mono text-sm text-purple-300 mt-0.5 block font-black">UNINITIALIZED</strong>
+            </div>
+            <div class="p-3.5 rounded-xl bg-black/80 border border-purple-900/40">
+              <span class="text-[11px] text-slate-400 block font-medium">Final On-Chain Payout</span>
+              <strong id="stPayout" class="mono text-base text-emerald-400 mt-0.5 block font-black">-</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Explorer Console -->
+        <div>
+          <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
+            <span class="mono uppercase tracking-wider font-bold">Aptos VM Execution Log</span>
+            <a id="explorerLink" href="https://explorer.aptoslabs.com/?network=testnet" target="_blank" rel="noopener noreferrer" class="text-purple-400 hover:underline flex items-center gap-1 font-bold">
+              View Explorer <i data-lucide="external-link" class="w-3 h-3"></i>
+            </a>
+          </div>
+          <div id="log" class="w-full h-24 p-3 rounded-xl bg-black border border-purple-900/50 mono text-xs text-purple-300 overflow-y-auto whitespace-pre-wrap font-medium">Ready. Input your private key in Box 1 and click Connect to load your on-chain position.</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    const NODE_URL = "https://fullnode.testnet.aptoslabs.com/v1";
+    const client = new window.aptosSDK.AptosClient(NODE_URL);
+
+    // App State
+    let isLongSelected = false; // Default to SHORT
+    let chartHistory = [];
+    let currentSimChartPrice = 52000;
+    let expiryEpochSeconds = Math.floor(Date.now() / 1000) + 86400;
+
+    // Seed initial price chart history
+    for (let i = 0; i < 60; i++) {
+      chartHistory.push(52000 + Math.sin(i * 0.3) * 800 + (Math.random() - 0.5) * 500);
+    }
+
+    function showToast(msg, borderClass = "border-l-purple-400") {
+      const t = document.getElementById("toast");
+      t.className = `fixed top-5 right-5 z-50 transform transition-all duration-300 max-w-md rounded-xl p-4 bg-slate-950/95 border border-purple-500/50 border-l-4 ${borderClass} shadow-2xl backdrop-blur-md`;
+      document.getElementById("toastMsg").innerHTML = msg;
+      t.classList.remove("hidden");
+      setTimeout(hideToast, 6000);
+    }
+
+    function hideToast() {
+      document.getElementById("toast").classList.add("hidden");
+    }
+
+    function logMsg(msg, txHash = null) {
+      const logEl = document.getElementById("log");
+      const timestamp = new Date().toLocaleTimeString();
+      logEl.textContent = `[${timestamp}] ${msg}`;
+      if (txHash) {
+        const url = `https://explorer.aptoslabs.com/txn/${txHash}?network=testnet`;
+        const link = document.getElementById("explorerLink");
+        link.href = url;
+        link.innerHTML = `Inspect Txn ${txHash.slice(0, 10)}... <i data-lucide="external-link" class="w-3 h-3"></i>`;
+        lucide.createIcons();
+      }
+    }
+
+    function toggleConfigModal() {
+      const card = document.getElementById("configCard");
+      card.classList.toggle("border-purple-400");
+      document.getElementById("privateKey").focus();
+    }
+
+    function setDirection(isLong) {
+      isLongSelected = isLong;
+      const btnLong = document.getElementById("btnLong");
+      const btnShort = document.getElementById("btnShort");
+
+      if (isLong) {
+        btnLong.className = "py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all bg-emerald-500 text-black glow-emerald";
+        btnShort.className = "py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-white";
+      } else {
+        btnShort.className = "py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all bg-rose-500 text-white glow-rose";
+        btnLong.className = "py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-white";
+      }
+      updateLiveMath();
+    }
+
+    function setQuickAmount(val) {
+      document.getElementById("lockedAmount").value = val;
+      updateLiveMath();
+    }
+
+    function syncEntryWithLive() {
+      document.getElementById("entryPrice").value = Math.round(currentSimChartPrice);
+      updateLiveMath();
+    }
+
+    function applyPriceShock(pct) {
+      const entry = Number(document.getElementById("entryPrice").value) || 52000;
+      const shocked = Math.max(100, Math.round(entry * (1 + pct)));
+      document.getElementById("simulatedPrice").value = shocked;
+      chartHistory.push(shocked);
+      if (chartHistory.length > 60) chartHistory.shift();
+      updateLiveMath();
+    }
+
+    // Live P&L, Liquidation & Overlay Math
+    function updateLiveMath() {
+      const amount = Number(document.getElementById("lockedAmount").value) || 0;
+      const entry = Number(document.getElementById("entryPrice").value) || 1;
+      const sim = Number(document.getElementById("simulatedPrice").value) || 0;
+      const lev = Number(document.getElementById("leverage").value) || 1;
+
+      document.getElementById("leverageLabel").textContent = `${lev}x`;
+      document.getElementById("calcNotional").textContent = `${(amount * lev).toLocaleString()} UNITS`;
+
+      // Liquidation price estimate
+      const liqPrice = isLongSelected
+        ? Math.max(0, entry * (1 - 1 / lev))
+        : entry * (1 + 1 / lev);
+      document.getElementById("calcLiq").textContent = `$${liqPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
+      // Order button styling
+      const submitBtn = document.getElementById("submitOrderBtn");
+      document.getElementById("submitOrderText").textContent =
+        `Lock ${amount} Units & Open ${isLongSelected ? "LONG ↑" : "SHORT ↓"}`;
+      submitBtn.className = isLongSelected
+        ? "w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black shadow-lg transition-all flex items-center justify-center gap-2 glow-emerald"
+        : "w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-400 hover:to-pink-400 text-white shadow-lg transition-all flex items-center justify-center gap-2 glow-rose";
+
+      // Simulator overlays
+      document.getElementById("simPriceBig").textContent = `$${sim.toLocaleString()}`;
+      document.getElementById("overlayEntry").textContent = `$${entry.toLocaleString()}`;
+
+      const pctDelta = ((sim - entry) / entry) * 100;
+      const deltaEl = document.getElementById("overlayDelta");
+      deltaEl.textContent = `${pctDelta >= 0 ? "+" : ""}${pctDelta.toFixed(2)}%`;
+      deltaEl.className = pctDelta >= 0 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold";
+
+      // Projected PNL calculation
+      const won = isLongSelected ? sim > entry : sim < entry;
+      const diff = Math.abs(sim - entry);
+      const pnlDelta = Math.floor((amount * lev * diff) / entry);
+      let projected = won ? amount + pnlDelta : Math.max(0, amount - pnlDelta);
+
+      const payoutOverlay = document.getElementById("overlayPayout");
+      payoutOverlay.textContent = `${projected} UNITS (${won ? "PROFIT" : "LOSS"})`;
+      payoutOverlay.className = won ? "text-emerald-400 font-bold" : "text-rose-400 font-bold";
+
+      drawPriceCanvas();
+    }
+    // Interactive Canvas Chart with Multi-Color Violet/Pink Gradient
+    function drawPriceCanvas() {
+      const canvas = document.getElementById("priceCanvas");
+      if (!canvas) return;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      const ctx = canvas.getContext("2d");
+
+      const entry = Number(document.getElementById("entryPrice").value) || 52000;
+      const sim = Number(document.getElementById("simulatedPrice").value) || 40000;
+
+      const allVals = [...chartHistory, entry, sim];
+      const minVal = Math.min(...allVals) * 0.96;
+      const maxVal = Math.max(...allVals) * 1.04;
+      const range = Math.max(1, maxVal - minVal);
+
+      const mapY = (val) => canvas.height - ((val - minVal) / range) * (canvas.height - 36) - 18;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Grid lines
+      ctx.strokeStyle = "rgba(139, 92, 246, 0.15)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 3; i++) {
+        const y = (canvas.height / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Entry Price line
+      const entryY = mapY(entry);
+      ctx.save();
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = "#a855f7";
+      ctx.beginPath();
+      ctx.moveTo(0, entryY);
+      ctx.lineTo(canvas.width, entryY);
+      ctx.stroke();
+      ctx.restore();
+
+      // Target line
+      const simY = mapY(sim);
+      const won = isLongSelected ? sim > entry : sim < entry;
+      ctx.strokeStyle = won ? "#10b981" : "#f43f5e";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, simY);
+      ctx.lineTo(canvas.width, simY);
+      ctx.stroke();
+
+      // Price curve
+      const points = [...chartHistory.slice(0, -1), sim];
+      ctx.beginPath();
+      points.forEach((p, idx) => {
+        const x = (idx / (points.length - 1)) * canvas.width;
+        const y = mapY(p);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = "#c084fc";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Multi-color Gradient fill under curve
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.lineTo(0, canvas.height);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      grad.addColorStop(0, "rgba(168, 85, 247, 0.35)");
+      grad.addColorStop(0.5, "rgba(236, 72, 153, 0.15)");
+      grad.addColorStop(1, "rgba(0, 0, 0, 0.0)");
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Key parsing
+    function getAccount() {
+      let pkHex = document.getElementById("privateKey").value.trim();
+      if (!pkHex) {
+        showToast("Please paste your Testnet Private Key into Box 1 first.", "border-l-amber-400");
+        document.getElementById("privateKey").focus();
+        return null;
+      }
+      pkHex = pkHex.replace("ed25519-priv-", "");
+      const cleanHex = pkHex.startsWith("0x") ? pkHex.slice(2) : pkHex;
+      const keyBytes = new Uint8Array(cleanHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      return new window.aptosSDK.AptosAccount(keyBytes);
+    }
+
+    async function connectAccount() {
+      try {
+        const account = getAccount();
+        if (!account) return;
+        const addr = account.address().hex();
+        document.getElementById("accountDisplay").textContent = `${addr.slice(0, 10)}...${addr.slice(-8)}`;
+        document.getElementById("accountDisplay").className = "mono text-emerald-400 font-bold";
+        document.getElementById("walletBtnText").textContent = `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+        document.getElementById("connDot").className = "w-2 h-2 rounded-full bg-emerald-400";
+        showToast(`Connected to Aptos account <strong>${addr.slice(0, 10)}...</strong>`, "border-l-emerald-400");
+        logMsg(`Signer initialized: ${addr}\nFetching on-chain Position resource...`);
+        await fetchPosition();
+      } catch (err) {
+        showToast(`Invalid Private Key format: ${err.message}`, "border-l-rose-500");
+        logMsg(`Error parsing Private Key: ${err.message}`);
+      }
+    }
+
+    async function openPosition() {
+      try {
+        const account = getAccount();
+        if (!account) return;
+        const contractAddr = document.getElementById("contractAddr").value.trim();
+        const amount = document.getElementById("lockedAmount").value.toString();
+        const entryPrice = document.getElementById("entryPrice").value.toString();
+        const leverage = Number(document.getElementById("leverage").value);
+
+        logMsg(`Submitting open_position to Aptos Testnet...`);
+
+        const payload = {
+          type: "entry_function_payload",
+          function: `${contractAddr}::quant_futures::open_position`,
+          type_arguments: [],
+          arguments: [amount, leverage, entryPrice, isLongSelected]
+        };
+
+        const txnRequest = await client.generateTransaction(account.address(), payload);
+        const signedTxn = await client.signTransaction(account, txnRequest);
+        const txResult = await client.submitTransaction(signedTxn);
+        await client.waitForTransaction(txResult.hash);
+
+        showToast(`Quant Position Opened! Locked <strong>${amount} Units</strong> at <strong>$${entryPrice}</strong> with <strong>${leverage}x</strong> leverage.`, "border-l-emerald-400");
+        logMsg(`Position Opened Successfully!\nTx Hash: ${txResult.hash}`, txResult.hash);
+        await fetchPosition();
+      } catch (err) {
+        showToast(`Transaction Failed: ${err.message}`, "border-l-rose-500");
+        logMsg(`Error in open_position: ${err.message}`);
+      }
+    }
+
+    async function settlePosition() {
+      try {
+        const account = getAccount();
+        if (!account) return;
+        const contractAddr = document.getElementById("contractAddr").value.trim();
+        const simPrice = document.getElementById("simulatedPrice").value.toString();
+
+        logMsg(`Submitting settle_position at simulated price $${simPrice}...`);
+
+        const payload = {
+          type: "entry_function_payload",
+          function: `${contractAddr}::quant_futures::settle_position`,
+          type_arguments: [],
+          arguments: [simPrice]
+        };
+
+        const txnRequest = await client.generateTransaction(account.address(), payload);
+        const signedTxn = await client.signTransaction(account, txnRequest);
+        const txResult = await client.submitTransaction(signedTxn);
+        await client.waitForTransaction(txResult.hash);
+
+        showToast(`Contract Settled at <strong>$${Number(simPrice).toLocaleString()}</strong>! Payout calculated.`, "border-l-cyan-400");
+        logMsg(`Position Settled Successfully at $${simPrice}!\nTx Hash: ${txResult.hash}`, txResult.hash);
+        await fetchPosition();
+      } catch (err) {
+        showToast(`Settlement Error: ${err.message}`, "border-l-rose-500");
+        logMsg(`Error in settle_position: ${err.message}`);
+      }
+    }
+
+    async function fetchPosition() {
+      try {
+        const account = getAccount();
+        if (!account) return;
+        const userAddr = account.address().hex();
+        const contractAddr = document.getElementById("contractAddr").value.trim();
+        const resourceType = `${contractAddr}::quant_futures::Position`;
+
+        const res = await fetch(`${NODE_URL}/accounts/${userAddr}/resource/${resourceType}`);
+        if (!res.ok) {
+          logMsg(`No active Position resource found on-chain for quant_futures yet. Open a trade in Box 2!`);
+          return;
+        }
+        const json = await res.json();
+        const pos = json.data;
+
+        document.getElementById("stLocked").textContent = `${pos.margin} UNITS`;
+        document.getElementById("stEntry").textContent = `$${Number(pos.entry_price).toLocaleString()}`;
+        document.getElementById("stDirection").innerHTML = pos.is_long
+          ? `<span class="text-emerald-400 font-bold">LONG ↑</span> · ${pos.leverage}x`
+          : `<span class="text-rose-400 font-bold">SHORT ↓</span> · ${pos.leverage}x`;
+
+        expiryEpochSeconds = Number(pos.expiry_timestamp);
+        document.getElementById("stExpiry").textContent = new Date(expiryEpochSeconds * 1000).toLocaleString();
+
+        const stSettled = document.getElementById("stSettled");
+        const stPayout = document.getElementById("stPayout");
+
+        if (!pos.is_settled) {
+          stSettled.textContent = "ACTIVE (OPEN)";
+          stSettled.className = "mono text-sm text-cyan-400 mt-0.5 block font-bold";
+          stPayout.textContent = "Awaiting Settlement";
+          stPayout.className = "mono text-sm text-slate-400 mt-0.5 block font-medium";
+        } else {
+          stSettled.textContent = pos.is_liquidated ? "LIQUIDATED" : "SETTLED";
+          stSettled.className = pos.is_liquidated
+            ? "mono text-sm text-amber-400 mt-0.5 block font-extrabold"
+            : "mono text-sm text-emerald-400 mt-0.5 block font-extrabold";
+
+          const won = Number(pos.payout) > Number(pos.margin);
+          stPayout.textContent = `${pos.payout} UNITS (${won ? "PROFIT" : "LOSS"})`;
+          stPayout.className = won
+            ? "mono text-base text-emerald-400 font-extrabold mt-0.5 block"
+            : "mono text-base text-rose-400 font-extrabold mt-0.5 block";
+        }
+      } catch (err) {
+        logMsg(`Error reading on-chain state: ${err.message}`);
+      }
+    }
+
+    // Ticker loop
+    setInterval(() => {
+      const entry = Number(document.getElementById("entryPrice").value) || 52000;
+      currentSimChartPrice = entry + (Math.random() - 0.49) * 350;
+      const navPriceEl = document.getElementById("navLivePrice");
+      navPriceEl.textContent = `$${currentSimChartPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const rem = Math.max(0, expiryEpochSeconds - nowSec);
+      const hrs = String(Math.floor(rem / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((rem % 3600) / 60)).padStart(2, '0');
+      const secs = String(rem % 60).padStart(2, '0');
+      document.getElementById("navCountdown").textContent = `${hrs}:${mins}:${secs}`;
+    }, 1000);
+
+    window.addEventListener("resize", drawPriceCanvas);
+    window.onload = () => {
+      setDirection(false); // Default to Short
+      updateLiveMath();
+    };
+  </script>
+</body>
+</html>
